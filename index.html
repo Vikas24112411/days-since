@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#000000">
 <meta name="color-scheme" content="dark">
+<meta name="app-version" content="3">
 <title>Days Since</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%23000'/%3E%3Cpath d='M18 14h13a18 18 0 0 1 0 36H18z' fill='%23fff'/%3E%3C/svg%3E">
 <style>
@@ -83,10 +84,30 @@
   @media (hover: hover) { .card:hover .tile { transform: translateY(-2px); } }
   .card:active .tile { transform: scale(.98); }
 
-  /* Connected counters */
-  .group { grid-column: span 2; display: grid; gap: 12px var(--gap-x); grid-template-columns: repeat(2, minmax(0, 1fr)); min-width: 0; }
-  .subs { min-width: 0; padding: 14px 14px 8px; border-radius: 26px; background: var(--surface); }
-  .subs-label { margin: 0 0 4px 4px; color: var(--muted); font-size: .75rem; font-weight: 600; }
+  /* A counter with sub-counters takes a whole row */
+  .joined { grid-column: 1 / -1; min-width: 0; overflow: hidden; border-radius: 26px; background: var(--surface); }
+  .card.banner {
+    position: relative; display: flex; align-items: flex-end; justify-content: space-between; gap: 12px;
+    padding: 16px 18px 14px; border-radius: 0; background: var(--c); color: var(--ink);
+  }
+  .card.banner:focus-visible { outline-offset: -4px; }
+  .banner .num, .banner .unit { display: block; }
+  .banner-text { min-width: 0; text-align: right; }
+  .banner .when { color: inherit; }
+  .subs { padding: 8px 16px 6px; }
+  .mini-row {
+    display: grid; grid-template-columns: 76px minmax(0, 1fr) 42px 44px; gap: 8px; align-items: center;
+    min-height: 34px; border-radius: 8px; font-size: .8125rem; font-variant-numeric: tabular-nums;
+  }
+  .mini-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; }
+  .mini-row.nested .mini-name { padding-left: 10px; }
+  .mini-row .track { margin: 0; }
+  .mini-days { text-align: right; white-space: nowrap; color: var(--muted); }
+  .mini-pct { text-align: right; white-space: nowrap; font-weight: 600; }
+  .mini-more { display: block; padding: 4px 0 6px; color: var(--muted); font-size: .8125rem; }
+  @media (hover: hover) { .mini-row:hover .mini-name, .mini-more:hover { text-decoration: underline; text-underline-offset: 3px; } }
+
+  /* Details panel rows */
   .row { display: block; padding: 8px 4px; border-radius: 12px; }
   .row-top { display: flex; align-items: baseline; gap: 8px; }
   .row-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; font-size: .9375rem; }
@@ -95,7 +116,6 @@
   .track i { position: absolute; top: 0; bottom: 0; min-width: 3px; border-radius: 3px; background: color-mix(in srgb, var(--c) 72%, #fff); }
   .row-sub { display: block; color: var(--muted); font-size: .75rem; }
   @media (hover: hover) { .row:hover { background: rgba(255, 255, 255, .06); } }
-  .nested { margin-left: 14px; }
 
   /* Groups: related counters on one shared timeline */
   .timeline {
@@ -135,8 +155,9 @@
   }
 
   /* Drag to connect */
-  .card.over .tile, .row.over { outline: 3px solid #fff; outline-offset: 2px; }
-  .card.over .tile::after {
+  .card.over .tile, .row.over, .mini-row.over { outline: 3px solid #fff; outline-offset: 2px; }
+  .card.banner.over { outline: 3px solid #fff; outline-offset: -3px; }
+  .card.over .tile::after, .card.banner.over::after {
     content: "Connect here"; position: absolute; inset: 0; display: grid; place-items: center;
     background: rgba(0, 0, 0, .55); color: #fff; font-weight: 600;
   }
@@ -177,8 +198,12 @@
   .field { display: block; margin-top: 14px; }
   .field > span, legend { display: block; margin-bottom: 6px; padding: 0; color: var(--muted); font-size: .8125rem; font-weight: 500; }
   .field input, .field select, .pick {
-    width: 100%; height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2);
+    display: block; width: 100%; min-width: 0; max-width: 100%; height: 44px; padding: 0 12px;
+    border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2);
   }
+  /* iOS gives date fields their own width and centres the text unless told otherwise */
+  input[type="date"] { -webkit-appearance: none; appearance: none; line-height: 42px; text-align: left; }
+  input[type="date"]::-webkit-date-and-time-value { text-align: left; }
   .pick { margin-top: 6px; }
   .sheet-field { margin-top: 0; }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
@@ -207,16 +232,12 @@
 
   @media (min-width: 640px) {
     :root { --gap-x: 20px; --gap-y: 28px; --edge: max(24px, calc((100vw - 1072px) / 2)); }
+    .joined { grid-column: span 2; }
     .grid { grid-template-columns: repeat(auto-fill, minmax(216px, 1fr)); }
     .tile { padding: 0 0 18px 24px; }
     .cap { padding-left: 24px; }
     .num { font-size: 3rem; }
     .sheet-tile .num { font-size: 3.5rem; }
-  }
-  @media (max-width: 479px) {
-    .subs { padding: 12px 10px 6px; }
-    .pct { font-size: .9375rem; }
-    .row-name { font-size: .875rem; }
   }
   @media (prefers-reduced-motion: reduce) {
     * { animation: none !important; transition: none !important; }
@@ -249,6 +270,8 @@
   Everything is saved only in this browser.
   <button class="link" data-act="export">Export backup</button> ·
   <button class="link" data-act="import">Import</button>
+  <br>Version <span id="version"></span>
+  <span id="update-link" hidden>· <button class="link" data-act="check-update">Check for updates</button></span>
   <input type="file" id="file" accept="application/json,.json" hidden>
 </footer>
 
@@ -279,6 +302,10 @@
   const sheet = $('#sheet');
   const editor = $('#editor');
   const groupDialog = $('#group-dialog');
+  const VERSION = $('meta[name="app-version"]').content;
+  const UPDATE_KEY = 'days-since:update-tried';
+  const CAN_UPDATE = location.protocol.startsWith('http');
+  const MAX_ROWS = 4;
   const dateFormat = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -434,32 +461,57 @@
       <span class="unit">${unit(c)}</span>
     </span>`;
 
-  function rowHTML(c, parent, { label = c.name, tone = c, drag = true, nested = false, sub = null } = {}) {
+  function rowHTML(c, parent, { label = c.name, tone = c, drag = true, sub = null } = {}) {
     const s = share(c, parent);
     const n = days(c);
     const partial = s && s.overlapDays < n ? ` · ${s.overlapDays} inside ${esc(parent.name)}` : '';
     return `
-      <a class="row ${nested ? 'nested' : ''}" href="#" role="button" data-act="open" data-id="${esc(tone.id)}" ${drag ? 'data-drag' : 'draggable="false"'} style="${colorVars(tone)}">
+      <a class="row" href="#" role="button" data-act="open" data-id="${esc(tone.id)}" ${drag ? 'data-drag' : 'draggable="false"'} style="${colorVars(tone)}">
         <span class="row-top"><span class="row-name">${esc(label)}</span><span class="pct">${formatPct(s?.pct)}</span></span>
         <span class="track">${s?.overlapDays ? `<i style="left:${s.left}%;width:${s.pct}%"></i>` : ''}</span>
         <span class="row-sub">${sub ?? `${Math.abs(n)} ${unit(c)}${partial}`}</span>
       </a>`;
   }
 
-  // Rows for every counter below this one, indented under its own parent.
+  // Every counter below this one, each paired with its own parent.
   const treeRows = (parent, nested = false) => kidsOf(parent.id)
-    .map((k) => rowHTML(k, parent, { nested }) + treeRows(k, true))
-    .join('');
+    .flatMap((k) => [{ c: k, parent, nested }, ...treeRows(k, true)]);
+
+  function miniRowHTML({ c, parent, nested }) {
+    const s = share(c, parent);
+    const n = days(c);
+    const label = `${c.name}, ${Math.abs(n)} ${unit(c)}, ${formatPct(s?.pct)} of ${parent.name}`;
+    return `
+      <a class="mini-row ${nested ? 'nested' : ''}" href="#" role="button" aria-label="${esc(label)}" data-act="open" data-id="${esc(c.id)}" data-drag style="${colorVars(c)}">
+        <span class="mini-name">${esc(c.name)}</span>
+        <span class="track">${s?.overlapDays ? `<i style="left:${s.left}%;width:${s.pct}%"></i>` : ''}</span>
+        <span class="mini-days">${n < 0 ? `in ${-n}d` : `${n}d`}</span>
+        <span class="mini-pct">${formatPct(s?.pct)}</span>
+      </a>`;
+  }
 
   function cardHTML(c) {
     const label = `${esc(c.name)}, ${Math.abs(days(c))} ${unit(c)}`;
-    const card = `
+    const rows = treeRows(c);
+    if (!rows.length) {
+      return `
       <a class="card" href="#" role="button" aria-label="${label}" data-act="open" data-id="${esc(c.id)}" data-drag>
         ${tileHTML(c)}
         <span class="cap"><span class="name">${esc(c.name)}</span><span class="when">${esc(caption(c))}</span></span>
       </a>`;
-    if (!kidsOf(c.id).length) return card;
-    return `<div class="group">${card}<div class="subs"><p class="subs-label">Share of ${esc(c.name)}</p>${treeRows(c)}</div></div>`;
+    }
+    const extra = rows.length - MAX_ROWS;
+    return `
+      <div class="joined">
+        <a class="card banner" href="#" role="button" aria-label="${label}" data-act="open" data-id="${esc(c.id)}" data-drag style="${colorVars(c)}">
+          <span><span class="num">${Math.abs(days(c))}</span><span class="unit">${unit(c)}</span></span>
+          <span class="banner-text"><span class="name">${esc(c.name)}</span><span class="when">${esc(caption(c))}</span></span>
+        </a>
+        <div class="subs">
+          ${rows.slice(0, MAX_ROWS).map(miniRowHTML).join('')}
+          ${extra > 0 ? `<a class="mini-more" href="#" role="button" data-act="open" data-id="${esc(c.id)}">+${extra} more</a>` : ''}
+        </div>
+      </div>`;
   }
 
   // One line per counter on a shared axis, from the oldest start date to today.
@@ -784,6 +836,33 @@
     }
   }
 
+  // A home screen app can keep showing an old copy of this page, so ask for the current one.
+  // Counters live in localStorage, which reloading the page leaves untouched.
+  async function checkForUpdate({ manual = false } = {}) {
+    if (!CAN_UPDATE) return;
+    try {
+      const response = await fetch(`${location.pathname}?check=${Date.now()}`, { cache: 'no-store' });
+      if (!response.ok) throw new Error('Update check failed');
+      const latest = (await response.text()).match(/<meta name="app-version" content="([^"]+)"/)?.[1];
+      if (!latest || latest === VERSION) {
+        if (manual) toast("You're on the latest version");
+        return;
+      }
+      // Never reload mid-edit. The next check picks this up.
+      if (dragId || document.querySelector('dialog[open]')) return;
+      // Stops a reload loop if the new page is slow to reach this device.
+      const tried = JSON.parse(sessionStorage.getItem(UPDATE_KEY) || 'null');
+      if (tried?.version === latest && Date.now() - tried.at < 60000) {
+        if (manual) toast('Update is on its way. Try again in a minute');
+        return;
+      }
+      sessionStorage.setItem(UPDATE_KEY, JSON.stringify({ version: latest, at: Date.now() }));
+      location.replace(`${location.pathname}?v=${encodeURIComponent(latest)}`);
+    } catch {
+      if (manual) toast("Couldn't check for updates");
+    }
+  }
+
   const actions = {
     new() { returnTo = null; openEditor(null); },
     open(el) { openSheet(el.dataset.id); },
@@ -823,6 +902,7 @@
       groupDialog.close();
       commit(`Ungrouped ${group.name}`, () => membersOf(group.id).forEach(leaveGroup));
     },
+    'check-update'() { checkForUpdate({ manual: true }); },
     export: exportData,
     import() { $('#file').click(); },
   };
@@ -950,11 +1030,23 @@
     const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 1);
     setTimeout(() => { render(); tickAtMidnight(); }, next - now);
   }
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    render();
+    checkForUpdate();
+  });
+  window.addEventListener('pageshow', (e) => {
+    if (!e.persisted) return;
+    render();
+    checkForUpdate();
+  });
   window.addEventListener('storage', (e) => { if (e.key === KEY) { state = load(); render(); } });
 
+  $('#version').textContent = VERSION;
+  $('#update-link').hidden = !CAN_UPDATE;
   render();
   tickAtMidnight();
+  checkForUpdate();
 })();
 </script>
 </body>
