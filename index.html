@@ -97,6 +97,43 @@
   @media (hover: hover) { .row:hover { background: rgba(255, 255, 255, .06); } }
   .nested { margin-left: 14px; }
 
+  /* Groups: related counters on one shared timeline */
+  .timeline {
+    --name-w: 30%; --days-w: 72px; --lane-gap: 8px; --lane-h: 40px;
+    grid-column: span 2; min-width: 0; margin-top: 0; padding: 10px 14px; border-radius: 26px; background: var(--surface);
+  }
+  .timeline.over { outline: 3px solid #fff; outline-offset: 2px; }
+  .timeline-head { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
+  .timeline-title {
+    flex: 1; min-width: 0; min-height: 32px; padding: 0; border: 0; background: none; text-align: left;
+    font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  }
+  .mini { width: 32px; height: 32px; }
+  .lanes { position: relative; }
+  .lane {
+    display: grid; grid-template-columns: var(--name-w) minmax(0, 1fr) var(--days-w); gap: var(--lane-gap);
+    align-items: center; height: var(--lane-h); border-radius: 10px;
+  }
+  .lane-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: .875rem; font-weight: 600; }
+  .lane-name small { color: var(--muted); font-weight: 500; }
+  .lane-track { position: relative; height: 10px; overflow: hidden; border-radius: 5px; background: var(--surface-2); }
+  .lane-track i { position: absolute; top: 0; bottom: 0; min-width: 3px; border-radius: 5px; background: color-mix(in srgb, var(--c) 72%, #fff); }
+  .lane-days { text-align: right; white-space: nowrap; font-size: .8125rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .lane.done i { opacity: .6; }
+  .lane.done .lane-days { color: var(--muted); }
+  @media (hover: hover) { .lane:hover .lane-name { text-decoration: underline; text-underline-offset: 3px; } }
+  .swap {
+    position: absolute; width: 0; pointer-events: none; border-left: 2px dotted rgba(255, 255, 255, .6);
+    left: calc(var(--name-w) + var(--lane-gap) + (100% - var(--name-w) - var(--days-w) - 2 * var(--lane-gap)) * var(--p));
+    top: calc(var(--lane-h) * (var(--from) + .5));
+    height: calc(var(--lane-h) * (var(--to) - var(--from)));
+  }
+  .axis {
+    display: flex; justify-content: space-between; padding-bottom: 2px;
+    margin: 0 calc(var(--days-w) + var(--lane-gap)) 0 calc(var(--name-w) + var(--lane-gap));
+    color: var(--muted); font-size: .6875rem;
+  }
+
   /* Drag to connect */
   .card.over .tile, .row.over { outline: 3px solid #fff; outline-offset: 2px; }
   .card.over .tile::after {
@@ -118,11 +155,11 @@
     width: min(430px, 100vw); max-width: 100vw; height: 100dvh; max-height: 100dvh;
     animation: from-right .2s ease;
   }
-  #editor { width: min(440px, calc(100vw - 32px)); border-radius: 26px; }
+  #editor, #group-dialog { width: min(440px, calc(100vw - 32px)); border-radius: 26px; }
   @keyframes from-right { from { translate: 30px 0; opacity: 0; } }
   @keyframes from-below { from { translate: 0 30px; opacity: 0; } }
   @media (max-width: 640px) {
-    #sheet, #editor {
+    #sheet, #editor, #group-dialog {
       position: fixed; inset: auto 0 0 0; margin: 0; width: 100%; max-width: 100%; height: auto; max-height: 90dvh;
       border-radius: 26px 26px 0 0; animation: from-below .2s ease;
     }
@@ -131,6 +168,7 @@
   .close { position: absolute; top: 28px; right: 28px; z-index: 1; width: 36px; height: 36px; background: rgba(0, 0, 0, .35); color: #fff; }
   .sheet-tile { aspect-ratio: 2.2; padding: 0 0 18px 22px; }
   .sheet-tile .num { font-size: 3.5rem; }
+  .sheet-tile .ended-tag { right: auto; left: 14px; }
   h2 { margin: 16px 0 3px; font-size: 1.375rem; font-weight: 600; overflow-wrap: anywhere; }
   .meta { margin: 0; color: var(--muted); font-size: .875rem; line-height: 1.5; }
   section { margin-top: 20px; }
@@ -216,6 +254,7 @@
 
 <dialog id="sheet" aria-label="Counter details"><div id="sheet-body"></div></dialog>
 <dialog id="editor" aria-label="Edit counter"></dialog>
+<dialog id="group-dialog" aria-label="Group"></dialog>
 
 <script>
 (() => {
@@ -224,8 +263,8 @@
   const KEY = 'days-since:v1';
   const DAY = 864e5;
   const SORTS = {
-    long: (a, b) => days(b) - days(a),
-    short: (a, b) => days(a) - days(b),
+    long: (a, b) => b.days - a.days,
+    short: (a, b) => a.days - b.days,
     name: (a, b) => a.name.localeCompare(b.name),
   };
   // Each pair is [background, text colour], chosen so small text on the tile stays readable.
@@ -239,6 +278,7 @@
   const $ = (selector) => document.querySelector(selector);
   const sheet = $('#sheet');
   const editor = $('#editor');
+  const groupDialog = $('#group-dialog');
   const dateFormat = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -250,6 +290,7 @@
   const todayISO = () => { const n = new Date(); return `${n.getFullYear()}-${pad(n.getMonth() + 1)}-${pad(n.getDate())}`; };
   const isDate = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(toUTC(s)) && new Date(toUTC(s)).toISOString().slice(0, 10) === s;
   const formatDate = (iso) => dateFormat.format(toUTC(iso));
+  const monthFormat = new Intl.DateTimeFormat(undefined, { month: 'short', year: 'numeric', timeZone: 'UTC' });
 
   // Accepts saved or imported data and returns a clean state, or throws if it is unusable.
   function normalise(data) {
@@ -264,6 +305,8 @@
         end: isDate(c.end) ? c.end : null,
         color: Object.hasOwn(COLORS, c.color) ? c.color : 'blue',
         parentId: c.parentId == null ? null : String(c.parentId),
+        groupId: c.groupId == null ? null : String(c.groupId),
+        replacedBy: c.replacedBy == null ? null : String(c.replacedBy),
         reset: !!c.reset,
       };
     });
@@ -276,20 +319,34 @@
       }
       if (!byId.has(c.parentId)) c.parentId = null;
     }
-    return { sort: Object.hasOwn(SORTS, data.sort) ? data.sort : 'long', counters };
+    const groups = (Array.isArray(data.groups) ? data.groups : [])
+      .filter((g) => g?.id != null && typeof g.name === 'string' && g.name.trim())
+      .map((g) => ({ id: String(g.id), name: g.name.trim().slice(0, 60) }));
+    const groupIds = new Set(groups.map((g) => g.id));
+    // A counter sits under one parent or in one group, never both.
+    for (const c of counters) if (c.parentId || !groupIds.has(c.groupId)) c.groupId = null;
+    for (const c of counters) {
+      const next = byId.get(c.replacedBy);
+      if (!next || !c.end || !c.groupId || next.groupId !== c.groupId) c.replacedBy = null;
+    }
+    return {
+      sort: Object.hasOwn(SORTS, data.sort) ? data.sort : 'long',
+      counters,
+      groups: groups.filter((g) => counters.some((c) => c.groupId === g.id)),
+    };
   }
 
   function load() {
     let raw = null;
     try {
       raw = localStorage.getItem(KEY);
-      if (raw === null) return { sort: 'long', counters: [] };
+      if (raw === null) return { sort: 'long', counters: [], groups: [] };
       return normalise(JSON.parse(raw));
     } catch {
       // Keep unreadable data aside rather than overwriting it on the next save.
       if (raw !== null) { try { localStorage.setItem(`${KEY}:unreadable`, raw); } catch {} }
       queueMicrotask(() => toast("Saved data couldn't be read"));
-      return { sort: 'long', counters: [] };
+      return { sort: 'long', counters: [], groups: [] };
     }
   }
 
@@ -303,11 +360,16 @@
   let openId = null;
   let returnTo = null;
   let dragId = null;
+  let onGroupSave = null;
+  let onGroupCancel = null;
 
   const get = (id) => state.counters.find((c) => c.id === id);
   const kidsOf = (id) => state.counters.filter((c) => c.parentId === id).sort((a, b) => a.start.localeCompare(b.start));
   const descendants = (id) => kidsOf(id).flatMap((k) => [k, ...descendants(k.id)]);
   const ancestors = (c) => { const out = []; for (let p = get(c.parentId); p; p = get(p.parentId)) out.push(p); return out; };
+  const getGroup = (id) => state.groups.find((g) => g.id === id);
+  const membersOf = (id) => state.counters.filter((c) => c.groupId === id)
+    .sort((a, b) => a.start.localeCompare(b.start) || (a.replacedBy === b.id ? -1 : b.replacedBy === a.id ? 1 : 0));
   const canConnect = (child, target) => child.id !== target.id && child.parentId !== target.id && !descendants(child.id).includes(target);
 
   const span = (c) => ({ from: toUTC(c.start), to: toUTC(c.end || today) });
@@ -360,14 +422,14 @@
   const colorVars = (c) => `--c:${COLORS[c.color][0]};--ink:${COLORS[c.color][1]}`;
 
   function caption(c) {
-    if (c.end) return `Ended ${formatDate(c.end)}`;
+    if (c.end) return `${c.replacedBy ? 'Replaced' : 'Ended'} ${formatDate(c.end)}`;
     if (days(c) < 0) return `Starts ${formatDate(c.start)}`;
     return `${c.reset ? 'Reset' : 'Since'} ${formatDate(c.start)}`;
   }
 
   const tileHTML = (c, extra = '') => `
     <span class="tile ${extra}" style="${colorVars(c)}">
-      ${c.end ? '<span class="ended-tag">Ended</span>' : ''}
+      ${c.end ? `<span class="ended-tag">${c.replacedBy ? 'Replaced' : 'Ended'}</span>` : ''}
       <span class="num">${Math.abs(days(c))}</span>
       <span class="unit">${unit(c)}</span>
     </span>`;
@@ -400,10 +462,59 @@
     return `<div class="group">${card}<div class="subs"><p class="subs-label">Share of ${esc(c.name)}</p>${treeRows(c)}</div></div>`;
   }
 
+  // One line per counter on a shared axis, from the oldest start date to today.
+  function groupHTML(group) {
+    const members = membersOf(group.id);
+    const from = toUTC(members[0].start);
+    const to = Math.max(toUTC(today), ...members.map((c) => toUTC(c.start)));
+    const range = to - from;
+    const position = (time) => (range ? (time - from) / range * 100 : 0);
+
+    const lanes = members.map((c) => {
+      const { from: start, to: stop } = span(c);
+      const left = position(start);
+      const width = Math.max(0, position(stop) - left);
+      const n = days(c);
+      const swappedTo = get(c.replacedBy);
+      const inside = kidsOf(c.id).length;
+      const label = `${c.name}, ${n < 0 ? `in ${-n} days` : `${n} ${unit(c)}`}${swappedTo ? `, replaced by ${swappedTo.name}` : c.end ? ', ended' : ''}`;
+      return `
+        <a class="lane ${c.end ? 'done' : ''}" href="#" role="button" aria-label="${esc(label)}" data-act="open" data-id="${esc(c.id)}" data-drag style="${colorVars(c)}">
+          <span class="lane-name">${esc(c.name)}${inside ? ` <small>+${inside}</small>` : ''}</span>
+          <span class="lane-track"><i style="left:${left}%;width:${width}%"></i></span>
+          <span class="lane-days">${n < 0 ? `in ${-n} days` : `${n} ${unit(c)}`}</span>
+        </a>`;
+    }).join('');
+
+    // A dotted line joins each replaced counter to the one that took over.
+    const swaps = members.map((c, i) => {
+      const j = members.findIndex((o) => o.id === c.replacedBy);
+      if (j < 0) return '';
+      return `<span class="swap" style="--p:${position(toUTC(c.end)) / 100};--from:${Math.min(i, j)};--to:${Math.max(i, j)}"></span>`;
+    }).join('');
+
+    const axisStart = monthFormat.format(from);
+    const axisEnd = to === toUTC(today) ? 'Today' : monthFormat.format(to);
+    return `
+      <section class="timeline" data-group-id="${esc(group.id)}" aria-label="${esc(group.name)}">
+        <div class="timeline-head">
+          <button class="timeline-title" data-act="edit-group" data-group="${esc(group.id)}">${esc(group.name)}</button>
+          <button class="round mini" data-act="add-to-group" data-group="${esc(group.id)}" aria-label="Add a counter to ${esc(group.name)}">
+            <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M10 3v14M3 10h14"/></svg>
+          </button>
+        </div>
+        <div class="lanes">${lanes}${swaps}</div>
+        <div class="axis"><span>${esc(axisStart)}</span><span>${esc(axisEnd)}</span></div>
+      </section>`;
+  }
+
   function render() {
     today = todayISO();
-    const roots = state.counters.filter((c) => !c.parentId).sort(SORTS[state.sort]);
-    $('#grid').innerHTML = roots.map(cardHTML).join('');
+    const entries = [
+      ...state.groups.map((g) => ({ name: g.name, days: Math.max(...membersOf(g.id).map(days)), html: groupHTML(g) })),
+      ...state.counters.filter((c) => !c.parentId && !c.groupId).map((c) => ({ name: c.name, days: days(c), html: cardHTML(c) })),
+    ].sort(SORTS[state.sort]);
+    $('#grid').innerHTML = entries.map((entry) => entry.html).join('');
     $('#empty').hidden = state.counters.length > 0;
     $('#sort').value = state.sort;
     if (sheet.open) renderSheet();
@@ -414,8 +525,7 @@
     if (!c) { sheet.close(); return; }
     const kids = kidsOf(c.id);
     const above = ancestors(c);
-    const blocked = new Set([c.id, ...descendants(c.id).map((d) => d.id)]);
-    const parents = state.counters.filter((o) => !blocked.has(o.id));
+    const replacements = c.groupId ? membersOf(c.groupId).filter((o) => o.id !== c.id && o.start >= c.start && o.replacedBy !== c.id) : [];
     const addable = state.counters.filter((o) => o.id !== c.id && canConnect(o, c));
     const total = days(c);
     const rest = total > 0 ? total - coveredDays(c) : null;
@@ -443,11 +553,14 @@
 
       <section>
         <label class="field sheet-field"><span>Part of</span>
-          <select data-change="parent">
-            <option value="">Nothing</option>
-            ${parents.map((o) => `<option value="${esc(o.id)}" ${o.id === c.parentId ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}
-          </select>
+          <select data-change="parent">${partOfOptions(c, partOfValue(c))}</select>
         </label>
+        ${replacements.length ? `<label class="field"><span>Replaced by</span>
+          <select data-change="replaced-by">
+            <option value="">Nothing</option>
+            ${replacements.map((o) => `<option value="${esc(o.id)}" ${o.id === c.replacedBy ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}
+          </select>
+        </label>` : ''}
       </section>
 
       <div class="actions">
@@ -459,25 +572,82 @@
     </div>`;
   }
 
+  const partOfValue = (c) => c.parentId || (c.groupId ? `g:${c.groupId}` : '');
+
+  // Groups and bigger counters share one "Part of" list, so there is only one field to learn.
+  function partOfOptions(c, current) {
+    const blocked = new Set(c ? [c.id, ...descendants(c.id).map((d) => d.id)] : []);
+    const counters = state.counters.filter((o) => !blocked.has(o.id));
+    const option = (value, label) => `<option value="${esc(value)}" ${value === current ? 'selected' : ''}>${esc(label)}</option>`;
+    return `
+      <option value="">Nothing</option>
+      <optgroup label="Groups">
+        ${state.groups.map((g) => option(`g:${g.id}`, g.name)).join('')}
+        <option value="__newgroup">New group…</option>
+      </optgroup>
+      ${counters.length ? `<optgroup label="Counters">${counters.map((o) => option(o.id, o.name)).join('')}</optgroup>` : ''}`;
+  }
+
+  function leaveGroup(c) {
+    if (!c.groupId) return;
+    c.groupId = null;
+    c.replacedBy = null;
+    for (const o of state.counters) if (o.replacedBy === c.id) o.replacedBy = null;
+  }
+
+  // Moves a counter to a parent id, a "g:<id>" group, or nowhere ("").
+  function placeIn(c, value) {
+    const groupId = value.startsWith('g:') ? value.slice(2) : null;
+    if (c.groupId !== groupId) leaveGroup(c);
+    c.groupId = groupId;
+    c.parentId = groupId || !value ? null : value;
+  }
+
+  function addGroup(name) {
+    const group = { id: uid(), name };
+    state.groups.push(group);
+    return `g:${group.id}`;
+  }
+
+  function askGroup(group, onSave, onCancel = null) {
+    onGroupSave = onSave;
+    onGroupCancel = onCancel;
+    groupDialog.innerHTML = `<form class="inner" id="group-form">
+      <h2 style="margin-top:0">${group ? 'Edit group' : 'New group'}</h2>
+      <label class="field"><span>Name</span><input name="name" required maxlength="60" autocomplete="off" placeholder="Apple gear" value="${esc(group?.name ?? '')}" autofocus></label>
+      <div class="actions">
+        ${group ? `<button class="btn danger" type="button" data-act="ungroup" data-group="${esc(group.id)}">Ungroup</button>` : ''}
+        <button class="btn" type="button" data-act="close">Cancel</button>
+        <button class="btn primary" type="submit">Save</button>
+      </div>
+    </form>`;
+    groupDialog.showModal();
+  }
+
+  function saveGroupForm(form) {
+    const name = form.elements.name.value.trim();
+    if (!name) return;
+    const save = onGroupSave;
+    onGroupCancel = null;
+    groupDialog.close();
+    save(name);
+  }
+
   function openSheet(id) {
     openId = id;
     renderSheet();
     if (!sheet.open) sheet.showModal();
   }
 
-  function openEditor(c, parentId = null) {
-    const draft = c || { name: '', start: today, end: null, color: nextColor(), parentId };
-    const blocked = new Set(c ? [c.id, ...descendants(c.id).map((d) => d.id)] : []);
-    const parents = state.counters.filter((o) => !blocked.has(o.id));
+  function openEditor(c, partOf = '') {
+    const draft = c || { name: '', start: today, end: null, color: nextColor() };
+    const place = c ? partOfValue(c) : partOf;
     editor.innerHTML = `<form class="inner" id="form" data-id="${c ? esc(c.id) : ''}">
       <h2 style="margin-top:0">${c ? 'Edit counter' : 'New counter'}</h2>
       <label class="field"><span>Name</span><input name="name" required maxlength="60" autocomplete="off" value="${esc(draft.name)}" autofocus></label>
       <label class="field"><span>Start date</span><input name="start" type="date" required value="${esc(draft.start)}"></label>
       <label class="field"><span>Part of</span>
-        <select name="parentId">
-          <option value="">Nothing</option>
-          ${parents.map((o) => `<option value="${esc(o.id)}" ${o.id === draft.parentId ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}
-        </select>
+        <select name="partOf" data-prev="${esc(place)}">${partOfOptions(c, place)}</select>
       </label>
       <p class="hint" id="hint" hidden></p>
       <label class="check"><input type="checkbox" name="ended" ${draft.end ? 'checked' : ''}> This has ended</label>
@@ -503,9 +673,9 @@
   function updateHint() {
     const form = $('#form');
     if (!form) return;
-    const { start, end, ended, parentId } = form.elements;
+    const { start, end, ended, partOf } = form.elements;
     $('#end-field').hidden = !ended.checked;
-    const parent = get(parentId.value);
+    const parent = get(partOf.value);
     const hint = $('#hint');
     hint.hidden = !parent || !isDate(start.value);
     if (hint.hidden) return;
@@ -525,7 +695,9 @@
       error.hidden = false;
       return;
     }
-    const values = { name, start: f.start.value, end, parentId: f.parentId.value || null, color: f.color.value };
+    const values = { name, start: f.start.value, end, color: f.color.value };
+    const partOf = f.partOf.value;
+    const newGroupName = form.dataset.groupName;
     const existing = get(form.dataset.id);
     const target = existing ? existing.id : uid();
     const back = returnTo;
@@ -533,11 +705,23 @@
     editor.close();
     if (back) openSheet(existing ? target : back);
     commit(existing ? 'Saved' : `Added ${name}`, () => {
+      const place = partOf === '__pending' ? addGroup(newGroupName) : partOf;
       if (existing) {
-        if (existing.start !== values.start) existing.reset = false;
+        if (existing.start !== values.start) {
+          existing.reset = false;
+          // Anything this counter replaced now stops on the new start date.
+          for (const o of state.counters.filter((x) => x.replacedBy === existing.id)) {
+            if (values.start >= o.start) o.end = values.start;
+            else o.replacedBy = null;
+          }
+        }
+        if (existing.end !== values.end) existing.replacedBy = null;
         Object.assign(existing, values);
+        placeIn(existing, place);
       } else {
-        state.counters.push({ id: target, reset: false, ...values });
+        const created = { id: target, parentId: null, groupId: null, replacedBy: null, reset: false, ...values };
+        state.counters.push(created);
+        placeIn(created, place);
       }
     });
   }
@@ -546,6 +730,7 @@
   function commit(message, change) {
     const before = structuredClone(state);
     change();
+    state.groups = state.groups.filter((g) => state.counters.some((c) => c.groupId === g.id));
     persist();
     render();
     toast(message, () => { state = before; persist(); render(); });
@@ -553,7 +738,12 @@
 
   function connect(child, target) {
     if (!child || !target || !canConnect(child, target)) return;
-    commit(`${child.name} is now part of ${target.name}`, () => { child.parentId = target.id; });
+    commit(`${child.name} is now part of ${target.name}`, () => placeIn(child, target.id));
+  }
+
+  function joinGroup(c, group) {
+    if (!c || !group || c.groupId === group.id) return;
+    commit(`${c.name} added to ${group.name}`, () => placeIn(c, `g:${group.id}`));
   }
 
   let toastEl = null;
@@ -601,11 +791,15 @@
     edit() { const c = get(openId); returnTo = c.id; sheet.close(); openEditor(c); },
     reset() {
       const c = get(openId);
-      commit(`${c.name} reset to 0`, () => { c.start = today; c.end = null; c.reset = true; });
+      commit(`${c.name} reset to 0`, () => {
+        c.start = today; c.end = null; c.reset = true; c.replacedBy = null;
+        // What it replaced keeps its end date; only the link goes.
+        for (const o of state.counters) if (o.replacedBy === c.id) o.replacedBy = null;
+      });
     },
     'toggle-end'() {
       const c = get(openId);
-      if (c.end) commit(`${c.name} resumed`, () => { c.end = null; });
+      if (c.end) commit(`${c.name} resumed`, () => { c.end = null; c.replacedBy = null; });
       else commit(`${c.name} ended today`, () => { c.end = today < c.start ? c.start : today; });
     },
     delete() {
@@ -614,8 +808,20 @@
       commit(`Deleted ${c.name}`, () => {
         // Sub-counters move up a level instead of being deleted too.
         for (const k of kidsOf(c.id)) k.parentId = c.parentId;
+        leaveGroup(c);
         state.counters = state.counters.filter((o) => o !== c);
       });
+    },
+    'add-to-group'(el) { returnTo = null; openEditor(null, `g:${el.dataset.group}`); },
+    'edit-group'(el) {
+      const group = getGroup(el.dataset.group);
+      askGroup(group, (name) => commit(`Renamed to ${name}`, () => { group.name = name; }));
+    },
+    ungroup(el) {
+      const group = getGroup(el.dataset.group);
+      onGroupCancel = null;
+      groupDialog.close();
+      commit(`Ungrouped ${group.name}`, () => membersOf(group.id).forEach(leaveGroup));
     },
     export: exportData,
     import() { $('#file').click(); },
@@ -632,16 +838,43 @@
     if (e.key === ' ' && e.target.matches('a[role="button"]')) { e.preventDefault(); e.target.click(); }
   });
 
-  document.addEventListener('submit', (e) => { e.preventDefault(); saveForm(e.target); });
+  document.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (e.target.id === 'group-form') saveGroupForm(e.target);
+    else saveForm(e.target);
+  });
   editor.addEventListener('input', updateHint);
+  editor.addEventListener('change', (e) => {
+    if (e.target.name !== 'partOf') return;
+    const select = e.target;
+    if (select.value !== '__newgroup') { select.dataset.prev = select.value; return; }
+    askGroup(null, (name) => {
+      // The group is only created if this form is saved.
+      select.querySelector('[value="__pending"]')?.remove();
+      select.add(new Option(name, '__pending', true, true));
+      select.dataset.prev = '__pending';
+      select.form.dataset.groupName = name;
+    }, () => { select.value = select.dataset.prev; updateHint(); });
+  });
 
   sheet.addEventListener('change', (e) => {
     const c = get(openId);
     const value = e.target.value;
     if (e.target.dataset.change === 'parent') {
-      if (value) connect(c, get(value));
-      else commit(`${c.name} disconnected`, () => { c.parentId = null; });
+      if (value === '__newgroup') {
+        askGroup(null, (name) => commit(`Created ${name}`, () => placeIn(c, addGroup(name))), renderSheet);
+        return;
+      }
+      if (value.startsWith('g:')) joinGroup(c, getGroup(value.slice(2)));
+      else if (value) connect(c, get(value));
+      else commit(`${c.name} disconnected`, () => placeIn(c, ''));
       sheet.querySelector('[data-change="parent"]')?.focus();
+    }
+    if (e.target.dataset.change === 'replaced-by') {
+      const next = get(value);
+      if (next) commit(`${c.name} replaced by ${next.name}`, () => { c.replacedBy = next.id; c.end = next.start; });
+      else commit(`${c.name} resumed`, () => { c.replacedBy = null; c.end = null; });
+      sheet.querySelector('[data-change="replaced-by"]')?.focus();
     }
     if (e.target.dataset.change === 'add-kid' && value) {
       if (value === '__new') {
@@ -655,10 +888,15 @@
     }
   });
 
-  for (const dialog of [sheet, editor]) {
+  for (const dialog of [sheet, editor, groupDialog]) {
     dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); });
     dialog.addEventListener('close', () => { if (toastEl && dialog.contains(toastEl)) document.body.append(toastEl); });
   }
+  groupDialog.addEventListener('close', () => {
+    const cancel = onGroupCancel;
+    onGroupCancel = null;
+    cancel?.();
+  });
   editor.addEventListener('close', () => {
     if (returnTo) { const id = returnTo; returnTo = null; openSheet(id); }
   });
@@ -672,6 +910,9 @@
 
   // Drag one counter onto another to make it a sub-counter.
   const dropTarget = (e) => {
+    // Anywhere on a group's card means "add to this group".
+    const timeline = e.target.closest?.('.timeline');
+    if (timeline) return get(dragId).groupId === timeline.dataset.groupId ? null : timeline;
     // The panel beside a parent card counts as dropping on that parent.
     const el = e.target.closest?.('[data-drag]') || e.target.closest?.('.subs')?.previousElementSibling;
     return el && canConnect(get(dragId), get(el.dataset.id)) ? el : null;
@@ -698,7 +939,8 @@
     if (!dragId) return;
     e.preventDefault();
     const el = dropTarget(e);
-    if (el) connect(get(dragId), get(el.dataset.id));
+    if (el?.dataset.groupId) joinGroup(get(dragId), getGroup(el.dataset.groupId));
+    else if (el) connect(get(dragId), get(el.dataset.id));
   });
   document.addEventListener('dragend', () => { dragId = null; clearOver(); });
 
