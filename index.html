@@ -1,0 +1,719 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="color-scheme" content="dark">
+<title>Days Since</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%23000'/%3E%3Cpath d='M18 14h13a18 18 0 0 1 0 36H18z' fill='%23fff'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #000;
+    --surface: #141416;
+    --surface-2: #232327;
+    --line: #2e2e33;
+    --text: #fff;
+    --muted: #a0a0a8;
+    --danger: #ff6b6b;
+    --gap-x: 14px;
+    --gap-y: 24px;
+    --edge: 16px;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
+  a { color: inherit; text-decoration: none; }
+  button, select, input { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+
+  /* Header */
+  .top {
+    position: sticky; top: 0; z-index: 5;
+    display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 12px;
+    padding: max(14px, env(safe-area-inset-top)) var(--edge) 14px;
+    background: rgba(0, 0, 0, .74);
+    -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+  }
+  .top h1 { margin: 0; font-size: 1.25rem; font-weight: 600; }
+  .top .add { justify-self: end; }
+  .sort {
+    justify-self: start; max-width: 100%; height: 44px; padding: 0 14px 0 36px;
+    border: 0; border-radius: 22px; appearance: none; -webkit-appearance: none; cursor: pointer;
+    font-size: .875rem; text-overflow: ellipsis;
+    background: var(--surface-2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23fff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 13V3M2 6l3-3 3 3M11 3v10M8 10l3 3 3-3'/%3E%3C/svg%3E") 13px center no-repeat;
+  }
+  .round {
+    display: grid; place-items: center; width: 44px; height: 44px; padding: 0;
+    border: 0; border-radius: 50%; background: var(--surface-2);
+  }
+
+  main { padding: 10px var(--edge) 24px; }
+
+  /* Counter grid */
+  .grid {
+    display: grid; gap: var(--gap-y) var(--gap-x); grid-auto-flow: dense;
+    grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
+  }
+  .card { display: block; min-width: 0; border-radius: 26px; }
+  .tile {
+    position: relative; display: flex; flex-direction: column; justify-content: flex-end;
+    aspect-ratio: 1.72; padding: 0 0 14px 18px; overflow: hidden;
+    border-radius: 26px; background: var(--c); color: var(--ink);
+    transition: transform .16s ease;
+  }
+  .tile::before {
+    content: ""; position: absolute; inset: 0 auto 0 0; width: 58%;
+    border-radius: 0 50% 50% 0 / 0 50% 50% 0;
+    background: linear-gradient(90deg, transparent, rgba(0, 0, 0, .1));
+  }
+  .num { position: relative; font-size: clamp(2.1rem, 9vw, 2.75rem); line-height: 1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .unit { position: relative; margin-top: 3px; font-size: .8125rem; font-weight: 600; }
+  .ended-tag {
+    position: absolute; top: 12px; right: 12px; padding: 3px 9px; border-radius: 999px;
+    background: rgba(0, 0, 0, .28); color: #fff; font-size: .6875rem; font-weight: 600;
+  }
+  .cap { display: block; padding: 10px 6px 0 18px; }
+  .name, .when { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .name { font-weight: 600; }
+  .when { margin-top: 3px; color: var(--muted); font-size: .8125rem; }
+  @media (hover: hover) { .card:hover .tile { transform: translateY(-2px); } }
+  .card:active .tile { transform: scale(.98); }
+
+  /* Connected counters */
+  .group { grid-column: span 2; display: grid; gap: 12px var(--gap-x); grid-template-columns: repeat(2, minmax(0, 1fr)); min-width: 0; }
+  .subs { min-width: 0; padding: 14px 14px 8px; border-radius: 26px; background: var(--surface); }
+  .subs-label { margin: 0 0 4px 4px; color: var(--muted); font-size: .75rem; font-weight: 600; }
+  .row { display: block; padding: 8px 4px; border-radius: 12px; }
+  .row-top { display: flex; align-items: baseline; gap: 8px; }
+  .row-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; font-size: .9375rem; }
+  .pct { font-size: 1.0625rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .track { position: relative; display: block; height: 6px; margin: 7px 0 6px; overflow: hidden; border-radius: 3px; background: var(--surface-2); }
+  .track i { position: absolute; top: 0; bottom: 0; min-width: 3px; border-radius: 3px; background: color-mix(in srgb, var(--c) 72%, #fff); }
+  .row-sub { display: block; color: var(--muted); font-size: .75rem; }
+  @media (hover: hover) { .row:hover { background: rgba(255, 255, 255, .06); } }
+  .nested { margin-left: 14px; }
+
+  /* Drag to connect */
+  .card.over .tile, .row.over { outline: 3px solid #fff; outline-offset: 2px; }
+  .card.over .tile::after {
+    content: "Connect here"; position: absolute; inset: 0; display: grid; place-items: center;
+    background: rgba(0, 0, 0, .55); color: #fff; font-weight: 600;
+  }
+
+  .empty { padding: 72px 16px; text-align: center; color: var(--muted); }
+  .empty p { margin: 0 0 18px; }
+  footer { padding: 18px calc(var(--edge) + 6px) calc(30px + env(safe-area-inset-bottom)); color: var(--muted); font-size: .8125rem; line-height: 1.5; }
+  .link { padding: 0; border: 0; background: none; color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+
+  /* Dialogs */
+  dialog { padding: 0; border: 0; background: #1a1a1d; color: var(--text); }
+  dialog::backdrop { background: rgba(0, 0, 0, .62); }
+  .inner { position: relative; padding: 20px; }
+  #sheet {
+    position: fixed; inset: 0 0 0 auto; margin: 0;
+    width: min(430px, 100vw); max-width: 100vw; height: 100dvh; max-height: 100dvh;
+    animation: from-right .2s ease;
+  }
+  #editor { width: min(440px, calc(100vw - 32px)); border-radius: 26px; }
+  @keyframes from-right { from { translate: 30px 0; opacity: 0; } }
+  @keyframes from-below { from { translate: 0 30px; opacity: 0; } }
+  @media (max-width: 640px) {
+    #sheet, #editor {
+      position: fixed; inset: auto 0 0 0; margin: 0; width: 100%; max-width: 100%; height: auto; max-height: 90dvh;
+      border-radius: 26px 26px 0 0; animation: from-below .2s ease;
+    }
+    .inner { padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+  }
+  .close { position: absolute; top: 28px; right: 28px; z-index: 1; width: 36px; height: 36px; background: rgba(0, 0, 0, .35); color: #fff; }
+  .sheet-tile { aspect-ratio: 2.2; padding: 0 0 18px 22px; }
+  .sheet-tile .num { font-size: 3.5rem; }
+  h2 { margin: 16px 0 3px; font-size: 1.375rem; font-weight: 600; overflow-wrap: anywhere; }
+  .meta { margin: 0; color: var(--muted); font-size: .875rem; line-height: 1.5; }
+  section { margin-top: 20px; }
+  h3 { margin: 0 0 6px; color: var(--muted); font-size: .75rem; font-weight: 600; }
+  .rest { display: flex; justify-content: space-between; gap: 12px; padding: 8px 4px; color: var(--muted); font-size: .8125rem; }
+  .field { display: block; margin-top: 14px; }
+  .field > span, legend { display: block; margin-bottom: 6px; padding: 0; color: var(--muted); font-size: .8125rem; font-weight: 500; }
+  .field input, .field select, .pick {
+    width: 100%; height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2);
+  }
+  .pick { margin-top: 6px; }
+  .sheet-field { margin-top: 0; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+  .btn { flex: 1 1 auto; min-height: 44px; padding: 0 16px; border: 0; border-radius: 12px; background: var(--surface-2); font-weight: 600; font-size: .9375rem; }
+  .btn.primary { background: #fff; color: #000; }
+  .btn.danger { color: var(--danger); }
+  fieldset { margin: 14px 0 0; padding: 0; border: 0; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+  .swatches label { position: relative; cursor: pointer; }
+  .swatches input { position: absolute; opacity: 0; width: 34px; height: 34px; margin: 0; cursor: pointer; }
+  .swatches span { display: block; width: 34px; height: 34px; border-radius: 50%; background: var(--c); }
+  .swatches input:checked + span { box-shadow: 0 0 0 2px #1a1a1d, 0 0 0 4px #fff; }
+  .swatches input:focus-visible + span { outline: 2px solid #fff; outline-offset: 5px; }
+  .check { display: flex; align-items: center; gap: 10px; min-height: 44px; margin-top: 8px; cursor: pointer; font-size: .9375rem; }
+  .check input { width: 20px; height: 20px; margin: 0; accent-color: #fff; }
+  .hint { margin: 10px 0 0; font-size: .875rem; font-weight: 600; }
+  .error { margin: 10px 0 0; color: var(--danger); font-size: .875rem; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom)); z-index: 10; translate: -50% 0;
+    display: flex; align-items: center; gap: 14px; width: max-content; max-width: calc(100vw - 32px);
+    padding: 12px 18px; border-radius: 16px; background: #fff; color: #000; font-size: .9375rem;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, .5);
+  }
+  .toast button { padding: 0; border: 0; background: none; color: #000; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+
+  @media (min-width: 640px) {
+    :root { --gap-x: 20px; --gap-y: 28px; --edge: max(24px, calc((100vw - 1072px) / 2)); }
+    .grid { grid-template-columns: repeat(auto-fill, minmax(216px, 1fr)); }
+    .tile { padding: 0 0 18px 24px; }
+    .cap { padding-left: 24px; }
+    .num { font-size: 3rem; }
+    .sheet-tile .num { font-size: 3.5rem; }
+  }
+  @media (max-width: 479px) {
+    .subs { padding: 12px 10px 6px; }
+    .pct { font-size: .9375rem; }
+    .row-name { font-size: .875rem; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <select class="sort" id="sort" aria-label="Sort counters">
+    <option value="long">Longest</option>
+    <option value="short">Shortest</option>
+    <option value="name">A–Z</option>
+  </select>
+  <h1>Counters</h1>
+  <button class="round add" data-act="new" aria-label="Add counter">
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M10 3v14M3 10h14"/></svg>
+  </button>
+</header>
+
+<main>
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty" hidden>
+    <p>No counters yet.</p>
+    <button class="btn primary" data-act="new">Add your first counter</button>
+  </div>
+</main>
+
+<footer>
+  To connect counters, drag one onto another or open a counter.
+  Everything is saved only in this browser.
+  <button class="link" data-act="export">Export backup</button> ·
+  <button class="link" data-act="import">Import</button>
+  <input type="file" id="file" accept="application/json,.json" hidden>
+</footer>
+
+<dialog id="sheet" aria-label="Counter details"><div id="sheet-body"></div></dialog>
+<dialog id="editor" aria-label="Edit counter"></dialog>
+
+<script>
+(() => {
+  'use strict';
+
+  const KEY = 'days-since:v1';
+  const DAY = 864e5;
+  const SORTS = {
+    long: (a, b) => days(b) - days(a),
+    short: (a, b) => days(a) - days(b),
+    name: (a, b) => a.name.localeCompare(b.name),
+  };
+  // Each pair is [background, text colour], chosen so small text on the tile stays readable.
+  const COLORS = {
+    coral: ['#C94A33', '#fff'], rose: ['#CF3F5A', '#fff'], red: ['#D93636', '#fff'],
+    amber: ['#F2B134', '#0b0b0f'], lime: ['#C6DF50', '#0b0b0f'], teal: ['#0F8577', '#fff'],
+    sky: ['#5EC8F0', '#0b0b0f'], blue: ['#3F67E0', '#fff'], indigo: ['#3F2BD6', '#fff'],
+    violet: ['#7440E8', '#fff'], orchid: ['#A94FB3', '#fff'], slate: ['#5A6478', '#fff'],
+  };
+
+  const $ = (selector) => document.querySelector(selector);
+  const sheet = $('#sheet');
+  const editor = $('#editor');
+  const dateFormat = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const esc = (value) => String(value).replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
+  const pad = (n) => String(n).padStart(2, '0');
+
+  // Dates are stored as YYYY-MM-DD and compared in UTC, so daylight saving never shifts a count.
+  const toUTC = (iso) => { const [y, m, d] = iso.split('-').map(Number); return Date.UTC(y, m - 1, d); };
+  const todayISO = () => { const n = new Date(); return `${n.getFullYear()}-${pad(n.getMonth() + 1)}-${pad(n.getDate())}`; };
+  const isDate = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(toUTC(s)) && new Date(toUTC(s)).toISOString().slice(0, 10) === s;
+  const formatDate = (iso) => dateFormat.format(toUTC(iso));
+
+  // Accepts saved or imported data and returns a clean state, or throws if it is unusable.
+  function normalise(data) {
+    const list = Array.isArray(data) ? data : data?.counters;
+    if (!Array.isArray(list)) throw new Error('No counters found');
+    const counters = list.map((c) => {
+      if (typeof c?.name !== 'string' || !c.name.trim() || !isDate(c.start)) throw new Error('Invalid counter');
+      return {
+        id: String(c.id || uid()),
+        name: c.name.trim().slice(0, 60),
+        start: c.start,
+        end: isDate(c.end) ? c.end : null,
+        color: Object.hasOwn(COLORS, c.color) ? c.color : 'blue',
+        parentId: c.parentId == null ? null : String(c.parentId),
+        reset: !!c.reset,
+      };
+    });
+    const byId = new Map(counters.map((c) => [c.id, c]));
+    for (const c of counters) {
+      const seen = new Set([c.id]);
+      for (let p = byId.get(c.parentId); p; p = byId.get(p.parentId)) {
+        if (seen.has(p.id)) { c.parentId = null; break; }
+        seen.add(p.id);
+      }
+      if (!byId.has(c.parentId)) c.parentId = null;
+    }
+    return { sort: Object.hasOwn(SORTS, data.sort) ? data.sort : 'long', counters };
+  }
+
+  function load() {
+    let raw = null;
+    try {
+      raw = localStorage.getItem(KEY);
+      if (raw === null) return { sort: 'long', counters: [] };
+      return normalise(JSON.parse(raw));
+    } catch {
+      // Keep unreadable data aside rather than overwriting it on the next save.
+      if (raw !== null) { try { localStorage.setItem(`${KEY}:unreadable`, raw); } catch {} }
+      queueMicrotask(() => toast("Saved data couldn't be read"));
+      return { sort: 'long', counters: [] };
+    }
+  }
+
+  function persist() {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); }
+    catch { toast("Couldn't save. Your browser may be blocking storage"); }
+  }
+
+  let state = load();
+  let today = todayISO();
+  let openId = null;
+  let returnTo = null;
+  let dragId = null;
+
+  const get = (id) => state.counters.find((c) => c.id === id);
+  const kidsOf = (id) => state.counters.filter((c) => c.parentId === id).sort((a, b) => a.start.localeCompare(b.start));
+  const descendants = (id) => kidsOf(id).flatMap((k) => [k, ...descendants(k.id)]);
+  const ancestors = (c) => { const out = []; for (let p = get(c.parentId); p; p = get(p.parentId)) out.push(p); return out; };
+  const canConnect = (child, target) => child.id !== target.id && child.parentId !== target.id && !descendants(child.id).includes(target);
+
+  const span = (c) => ({ from: toUTC(c.start), to: toUTC(c.end || today) });
+  function days(c) { const { from, to } = span(c); return Math.round((to - from) / DAY); }
+
+  // How much of the parent's time the child covers. Only the overlapping days count.
+  function share(child, parent) {
+    const c = span(child), p = span(parent);
+    const total = p.to - p.from;
+    if (total <= 0) return null;
+    const from = Math.max(c.from, p.from), to = Math.min(c.to, p.to);
+    const overlap = Math.max(0, to - from);
+    return { pct: overlap / total * 100, left: Math.min(100, (from - p.from) / total * 100), overlapDays: Math.round(overlap / DAY) };
+  }
+
+  // Days of the parent covered by at least one sub-counter, so overlaps aren't counted twice.
+  function coveredDays(parent) {
+    const p = span(parent);
+    const parts = kidsOf(parent.id).map(span)
+      .map((k) => [Math.max(k.from, p.from), Math.min(k.to, p.to)])
+      .filter(([from, to]) => to > from)
+      .sort((a, b) => a[0] - b[0]);
+    let covered = 0, reach = -Infinity;
+    for (const [from, to] of parts) {
+      if (to > reach) { covered += to - Math.max(from, reach); reach = to; }
+    }
+    return Math.round(covered / DAY);
+  }
+
+  function formatPct(value) {
+    if (value == null) return '–';
+    if (value === 0) return '0%';
+    if (value < .1) return '<0.1%';
+    if (value >= 100) return '100%';
+    if (value > 99.9) return '>99.9%';
+    return `${value.toFixed(1)}%`;
+  }
+
+  function breakdown(c) {
+    const [y1, m1, d1] = c.start.split('-').map(Number);
+    const [y2, m2, d2] = (c.end || today).split('-').map(Number);
+    let y = y2 - y1, m = m2 - m1, d = d2 - d1;
+    if (d < 0) { m--; d += new Date(Date.UTC(y2, m2 - 1, 0)).getUTCDate(); }
+    if (m < 0) { y--; m += 12; }
+    const parts = [[y, 'yr'], [m, 'mo'], [d, 'day']].filter(([n]) => n).map(([n, u]) => `${n} ${u}${n > 1 && u !== 'mo' ? 's' : ''}`);
+    return parts.join(' ') || '0 days';
+  }
+
+  const unit = (c) => { const n = days(c); return n < 0 ? 'days to go' : n === 1 ? 'day' : 'days'; };
+  const colorVars = (c) => `--c:${COLORS[c.color][0]};--ink:${COLORS[c.color][1]}`;
+
+  function caption(c) {
+    if (c.end) return `Ended ${formatDate(c.end)}`;
+    if (days(c) < 0) return `Starts ${formatDate(c.start)}`;
+    return `${c.reset ? 'Reset' : 'Since'} ${formatDate(c.start)}`;
+  }
+
+  const tileHTML = (c, extra = '') => `
+    <span class="tile ${extra}" style="${colorVars(c)}">
+      ${c.end ? '<span class="ended-tag">Ended</span>' : ''}
+      <span class="num">${Math.abs(days(c))}</span>
+      <span class="unit">${unit(c)}</span>
+    </span>`;
+
+  function rowHTML(c, parent, { label = c.name, tone = c, drag = true, nested = false, sub = null } = {}) {
+    const s = share(c, parent);
+    const n = days(c);
+    const partial = s && s.overlapDays < n ? ` · ${s.overlapDays} inside ${esc(parent.name)}` : '';
+    return `
+      <a class="row ${nested ? 'nested' : ''}" href="#" role="button" data-act="open" data-id="${esc(tone.id)}" ${drag ? 'data-drag' : 'draggable="false"'} style="${colorVars(tone)}">
+        <span class="row-top"><span class="row-name">${esc(label)}</span><span class="pct">${formatPct(s?.pct)}</span></span>
+        <span class="track">${s?.overlapDays ? `<i style="left:${s.left}%;width:${s.pct}%"></i>` : ''}</span>
+        <span class="row-sub">${sub ?? `${Math.abs(n)} ${unit(c)}${partial}`}</span>
+      </a>`;
+  }
+
+  // Rows for every counter below this one, indented under its own parent.
+  const treeRows = (parent, nested = false) => kidsOf(parent.id)
+    .map((k) => rowHTML(k, parent, { nested }) + treeRows(k, true))
+    .join('');
+
+  function cardHTML(c) {
+    const label = `${esc(c.name)}, ${Math.abs(days(c))} ${unit(c)}`;
+    const card = `
+      <a class="card" href="#" role="button" aria-label="${label}" data-act="open" data-id="${esc(c.id)}" data-drag>
+        ${tileHTML(c)}
+        <span class="cap"><span class="name">${esc(c.name)}</span><span class="when">${esc(caption(c))}</span></span>
+      </a>`;
+    if (!kidsOf(c.id).length) return card;
+    return `<div class="group">${card}<div class="subs"><p class="subs-label">Share of ${esc(c.name)}</p>${treeRows(c)}</div></div>`;
+  }
+
+  function render() {
+    today = todayISO();
+    const roots = state.counters.filter((c) => !c.parentId).sort(SORTS[state.sort]);
+    $('#grid').innerHTML = roots.map(cardHTML).join('');
+    $('#empty').hidden = state.counters.length > 0;
+    $('#sort').value = state.sort;
+    if (sheet.open) renderSheet();
+  }
+
+  function renderSheet() {
+    const c = get(openId);
+    if (!c) { sheet.close(); return; }
+    const kids = kidsOf(c.id);
+    const above = ancestors(c);
+    const blocked = new Set([c.id, ...descendants(c.id).map((d) => d.id)]);
+    const parents = state.counters.filter((o) => !blocked.has(o.id));
+    const addable = state.counters.filter((o) => o.id !== c.id && canConnect(o, c));
+    const total = days(c);
+    const rest = total > 0 ? total - coveredDays(c) : null;
+
+    $('#sheet-body').innerHTML = `<div class="inner">
+      <button class="round close" data-act="close" aria-label="Close">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M2 2l10 10M12 2L2 12"/></svg>
+      </button>
+      ${tileHTML(c, 'sheet-tile')}
+      <h2>${esc(c.name)}</h2>
+      <p class="meta">${esc(caption(c))} · ${esc(breakdown(c))}</p>
+
+      ${above.length ? `<section><h3>Share of</h3>${above.map((a) => rowHTML(c, a, { label: a.name, tone: a, drag: false, sub: `${Math.abs(days(a))} ${unit(a)} in total` })).join('')}</section>` : ''}
+
+      <section>
+        <h3>Sub-counters</h3>
+        ${kids.map((k) => rowHTML(k, c, { drag: false })).join('')}
+        ${kids.length && rest != null ? `<div class="rest"><span>Not in a sub-counter</span><span>${rest} days · ${formatPct(rest / total * 100)}</span></div>` : ''}
+        <select class="pick" data-change="add-kid" aria-label="Add a sub-counter">
+          <option value="">Add a sub-counter…</option>
+          ${addable.map((o) => `<option value="${esc(o.id)}">${esc(o.name)}</option>`).join('')}
+          <option value="__new">New counter…</option>
+        </select>
+      </section>
+
+      <section>
+        <label class="field sheet-field"><span>Part of</span>
+          <select data-change="parent">
+            <option value="">Nothing</option>
+            ${parents.map((o) => `<option value="${esc(o.id)}" ${o.id === c.parentId ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}
+          </select>
+        </label>
+      </section>
+
+      <div class="actions">
+        <button class="btn" data-act="edit">Edit</button>
+        <button class="btn" data-act="reset">Reset</button>
+        <button class="btn" data-act="toggle-end">${c.end ? 'Resume' : 'End'}</button>
+        <button class="btn danger" data-act="delete">Delete</button>
+      </div>
+    </div>`;
+  }
+
+  function openSheet(id) {
+    openId = id;
+    renderSheet();
+    if (!sheet.open) sheet.showModal();
+  }
+
+  function openEditor(c, parentId = null) {
+    const draft = c || { name: '', start: today, end: null, color: nextColor(), parentId };
+    const blocked = new Set(c ? [c.id, ...descendants(c.id).map((d) => d.id)] : []);
+    const parents = state.counters.filter((o) => !blocked.has(o.id));
+    editor.innerHTML = `<form class="inner" id="form" data-id="${c ? esc(c.id) : ''}">
+      <h2 style="margin-top:0">${c ? 'Edit counter' : 'New counter'}</h2>
+      <label class="field"><span>Name</span><input name="name" required maxlength="60" autocomplete="off" value="${esc(draft.name)}" autofocus></label>
+      <label class="field"><span>Start date</span><input name="start" type="date" required value="${esc(draft.start)}"></label>
+      <label class="field"><span>Part of</span>
+        <select name="parentId">
+          <option value="">Nothing</option>
+          ${parents.map((o) => `<option value="${esc(o.id)}" ${o.id === draft.parentId ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}
+        </select>
+      </label>
+      <p class="hint" id="hint" hidden></p>
+      <label class="check"><input type="checkbox" name="ended" ${draft.end ? 'checked' : ''}> This has ended</label>
+      <label class="field" id="end-field" ${draft.end ? '' : 'hidden'}><span>End date</span><input name="end" type="date" value="${esc(draft.end || today)}"></label>
+      <fieldset><legend>Colour</legend><div class="swatches">
+        ${Object.keys(COLORS).map((key) => `<label style="--c:${COLORS[key][0]}"><input type="radio" name="color" value="${key}" aria-label="${key}" ${key === draft.color ? 'checked' : ''}><span></span></label>`).join('')}
+      </div></fieldset>
+      <p class="error" id="error" role="alert" hidden></p>
+      <div class="actions">
+        <button class="btn" type="button" data-act="close">Cancel</button>
+        <button class="btn primary" type="submit">Save</button>
+      </div>
+    </form>`;
+    updateHint();
+    editor.showModal();
+  }
+
+  function nextColor() {
+    const used = state.counters.map((c) => c.color);
+    return Object.keys(COLORS).find((key) => !used.includes(key)) || 'blue';
+  }
+
+  function updateHint() {
+    const form = $('#form');
+    if (!form) return;
+    const { start, end, ended, parentId } = form.elements;
+    $('#end-field').hidden = !ended.checked;
+    const parent = get(parentId.value);
+    const hint = $('#hint');
+    hint.hidden = !parent || !isDate(start.value);
+    if (hint.hidden) return;
+    const draft = { start: start.value, end: ended.checked && isDate(end.value) ? end.value : null };
+    hint.textContent = `${formatPct(share(draft, parent)?.pct)} of ${parent.name}`;
+  }
+
+  function saveForm(form) {
+    const f = form.elements;
+    const name = f.name.value.trim();
+    const end = f.ended.checked ? f.end.value : null;
+    const error = $('#error');
+    error.hidden = true;
+    if (!name) { error.textContent = 'Add a name.'; error.hidden = false; return; }
+    if (f.ended.checked && !(isDate(end) && end >= f.start.value)) {
+      error.textContent = 'End date must be on or after the start date.';
+      error.hidden = false;
+      return;
+    }
+    const values = { name, start: f.start.value, end, parentId: f.parentId.value || null, color: f.color.value };
+    const existing = get(form.dataset.id);
+    const target = existing ? existing.id : uid();
+    const back = returnTo;
+    returnTo = null;
+    editor.close();
+    if (back) openSheet(existing ? target : back);
+    commit(existing ? 'Saved' : `Added ${name}`, () => {
+      if (existing) {
+        if (existing.start !== values.start) existing.reset = false;
+        Object.assign(existing, values);
+      } else {
+        state.counters.push({ id: target, reset: false, ...values });
+      }
+    });
+  }
+
+  // Applies a change, saves it and offers Undo. Nothing here asks for confirmation.
+  function commit(message, change) {
+    const before = structuredClone(state);
+    change();
+    persist();
+    render();
+    toast(message, () => { state = before; persist(); render(); });
+  }
+
+  function connect(child, target) {
+    if (!child || !target || !canConnect(child, target)) return;
+    commit(`${child.name} is now part of ${target.name}`, () => { child.parentId = target.id; });
+  }
+
+  let toastEl = null;
+  let toastTimer = 0;
+  function toast(message, undo) {
+    toastEl?.remove();
+    clearTimeout(toastTimer);
+    toastEl = document.createElement('div');
+    toastEl.className = 'toast';
+    toastEl.setAttribute('role', 'status');
+    toastEl.textContent = message;
+    if (undo) {
+      const button = document.createElement('button');
+      button.textContent = 'Undo';
+      button.addEventListener('click', () => { toastEl.remove(); undo(); });
+      toastEl.append(button);
+    }
+    // An open modal dialog makes everything outside it unclickable, so the toast goes inside.
+    (document.querySelector('dialog[open]') || document.body).append(toastEl);
+    toastTimer = setTimeout(() => toastEl.remove(), 6000);
+  }
+
+  function exportData() {
+    const blob = new Blob([JSON.stringify({ version: 1, ...state }, null, 2)], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `days-since-${today}.json`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+
+  async function importFile(file) {
+    try {
+      const imported = normalise(JSON.parse(await file.text()));
+      commit(`Imported ${imported.counters.length} counters`, () => { state = imported; });
+    } catch {
+      toast("That file isn't a Days Since backup");
+    }
+  }
+
+  const actions = {
+    new() { returnTo = null; openEditor(null); },
+    open(el) { openSheet(el.dataset.id); },
+    close(el) { el.closest('dialog').close(); },
+    edit() { const c = get(openId); returnTo = c.id; sheet.close(); openEditor(c); },
+    reset() {
+      const c = get(openId);
+      commit(`${c.name} reset to 0`, () => { c.start = today; c.end = null; c.reset = true; });
+    },
+    'toggle-end'() {
+      const c = get(openId);
+      if (c.end) commit(`${c.name} resumed`, () => { c.end = null; });
+      else commit(`${c.name} ended today`, () => { c.end = today < c.start ? c.start : today; });
+    },
+    delete() {
+      const c = get(openId);
+      sheet.close();
+      commit(`Deleted ${c.name}`, () => {
+        // Sub-counters move up a level instead of being deleted too.
+        for (const k of kidsOf(c.id)) k.parentId = c.parentId;
+        state.counters = state.counters.filter((o) => o !== c);
+      });
+    },
+    export: exportData,
+    import() { $('#file').click(); },
+  };
+
+  document.addEventListener('click', (e) => {
+    const el = e.target.closest('[data-act]');
+    if (!el) return;
+    if (el.tagName === 'A') e.preventDefault();
+    actions[el.dataset.act](el);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === ' ' && e.target.matches('a[role="button"]')) { e.preventDefault(); e.target.click(); }
+  });
+
+  document.addEventListener('submit', (e) => { e.preventDefault(); saveForm(e.target); });
+  editor.addEventListener('input', updateHint);
+
+  sheet.addEventListener('change', (e) => {
+    const c = get(openId);
+    const value = e.target.value;
+    if (e.target.dataset.change === 'parent') {
+      if (value) connect(c, get(value));
+      else commit(`${c.name} disconnected`, () => { c.parentId = null; });
+      sheet.querySelector('[data-change="parent"]')?.focus();
+    }
+    if (e.target.dataset.change === 'add-kid' && value) {
+      if (value === '__new') {
+        returnTo = c.id;
+        sheet.close();
+        openEditor(null, c.id);
+      } else {
+        connect(get(value), c);
+        sheet.querySelector('[data-change="add-kid"]')?.focus();
+      }
+    }
+  });
+
+  for (const dialog of [sheet, editor]) {
+    dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); });
+    dialog.addEventListener('close', () => { if (toastEl && dialog.contains(toastEl)) document.body.append(toastEl); });
+  }
+  editor.addEventListener('close', () => {
+    if (returnTo) { const id = returnTo; returnTo = null; openSheet(id); }
+  });
+
+  $('#sort').addEventListener('change', (e) => { state.sort = e.target.value; persist(); render(); });
+  $('#file').addEventListener('change', (e) => {
+    const [file] = e.target.files;
+    if (file) importFile(file);
+    e.target.value = '';
+  });
+
+  // Drag one counter onto another to make it a sub-counter.
+  const dropTarget = (e) => {
+    // The panel beside a parent card counts as dropping on that parent.
+    const el = e.target.closest?.('[data-drag]') || e.target.closest?.('.subs')?.previousElementSibling;
+    return el && canConnect(get(dragId), get(el.dataset.id)) ? el : null;
+  };
+  const clearOver = () => document.querySelectorAll('.over').forEach((el) => el.classList.remove('over'));
+
+  document.addEventListener('dragstart', (e) => {
+    const el = e.target.closest?.('[data-drag]');
+    if (!el) return;
+    dragId = el.dataset.id;
+    e.dataTransfer.effectAllowed = 'link';
+    e.dataTransfer.setData('text/plain', get(dragId).name);
+  });
+  document.addEventListener('dragover', (e) => {
+    if (!dragId) return;
+    clearOver();
+    const el = dropTarget(e);
+    if (!el) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'link';
+    el.classList.add('over');
+  });
+  document.addEventListener('drop', (e) => {
+    if (!dragId) return;
+    e.preventDefault();
+    const el = dropTarget(e);
+    if (el) connect(get(dragId), get(el.dataset.id));
+  });
+  document.addEventListener('dragend', () => { dragId = null; clearOver(); });
+
+  // Keep counts right when the tab stays open past midnight or another tab changes the data.
+  function tickAtMidnight() {
+    const now = new Date();
+    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 1);
+    setTimeout(() => { render(); tickAtMidnight(); }, next - now);
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
+  window.addEventListener('storage', (e) => { if (e.key === KEY) { state = load(); render(); } });
+
+  render();
+  tickAtMidnight();
+})();
+</script>
+</body>
+</html>
